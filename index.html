@@ -477,6 +477,10 @@ input[type=range]{accent-color:var(--blue);width:150px}
             <button class="toggle" id="toggle-voice" onclick="toggleSetting('voice')"></button>
           </div>
           <div class="setting-row">
+            <span>语音音量</span>
+            <input type="range" min="0" max="1" step="0.05" id="voice-vol" oninput="setVoiceVol(this.value)" onchange="previewVoice()">
+          </div>
+          <div class="setting-row">
             <span>提示音</span>
             <button class="toggle" id="toggle-sound" onclick="toggleSetting('sound')"></button>
           </div>
@@ -1242,7 +1246,7 @@ const MON_EN = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV
 const SECTION_CODE = {'热身唤醒':'A · WARM-UP','核心稳定':'B · CORE','背部与上肢':'C · BACK','放松整合':'D · COOL-DOWN'};
 
 let settings = Object.assign(
-  {voice:true, sound:true, voiceName:null, bgm:true, bgmVol:0.5, prefs:{}, useEquip:true,
+  {voice:true, sound:true, voiceName:null, voiceVol:0.7, bgm:true, bgmVol:0.5, prefs:{}, useEquip:true,
    plan:{days:[1,3,5], time:'08:00'}},
   JSON.parse(localStorage.getItem('pilates_settings') || '{}'));
 if(!settings.plan) settings.plan = {days:[1,3,5], time:'08:00'};
@@ -1310,7 +1314,14 @@ document.addEventListener('visibilitychange', ()=>{
   const hidden = document.hidden;
   document.querySelectorAll('svg.fig').forEach(s=> hidden ? pauseSvg(s) : (REDUCE_MOTION ? pauseSvg(s) : playSvg(s)));
   if(!hidden && document.querySelector('#view-lib.active')) setupLibAnims();
+  if(!hidden && bgm && bgm.ctx && bgm.ctx.state==='suspended') bgm.ctx.resume();   // 回到前台后恢复音乐
 });
+
+/* iOS 音频解锁：首次触摸/点击时确保 AudioContext 处于运行态（PWA 下尤其需要） */
+function unlockAudio(){
+  try{ if(audioCtx && audioCtx.state==='suspended') audioCtx.resume(); }catch(e){}
+}
+['touchend','pointerdown','click'].forEach(ev=>document.addEventListener(ev, unlockAudio, {passive:true}));
 
 function renderLibrary(){
   $('#lib-count').textContent = EXERCISES.length + ' 个动作';
@@ -1568,7 +1579,13 @@ function renderSettings(){
   $('#toggle-bgm').classList.toggle('on', settings.bgm);
   $('#toggle-equip').classList.toggle('on', settings.useEquip);
   $('#bgm-vol').value = settings.bgmVol;
+  $('#voice-vol').value = (settings.voiceVol != null ? settings.voiceVol : 0.7);
   populateVoiceSelect();
+}
+
+function setVoiceVol(v){
+  settings.voiceVol = +v;
+  saveSettings();
 }
 
 function toggleSetting(key){
@@ -1926,7 +1943,9 @@ function startBgm(){
     const nd = noise.getChannelData(0);
     for(let i=0;i<nd.length;i++) nd[i] = Math.random()*2-1;
     bgm = {ctx, master, comp, bus, padBus, noise, cur:null, step:0, nextTime:ctx.currentTime+0.15, timerId:null};
-    master.gain.linearRampToValueAtTime(settings.bgmVol*0.5, ctx.currentTime+2);
+    master.gain.cancelScheduledValues(ctx.currentTime);
+    master.gain.setValueAtTime(0.0001, ctx.currentTime);              // iOS 必须先锚定起点，否则 ramp 不生效（无声）
+    master.gain.linearRampToValueAtTime(Math.max(0.0001, settings.bgmVol*0.5), ctx.currentTime+2);
     bgm.timerId = setInterval(musicScheduler, 25);
   }catch(e){}
 }
@@ -1945,7 +1964,7 @@ function stopBgm(){
 }
 function setBgmVol(v){
   settings.bgmVol = +v; saveSettings();
-  if(bgm) bgm.master.gain.linearRampToValueAtTime(settings.bgmVol*0.5, bgm.ctx.currentTime+0.2);
+  if(bgm){ const t=bgm.ctx.currentTime; bgm.master.gain.cancelScheduledValues(t); bgm.master.gain.setValueAtTime(Math.max(0.0001,bgm.master.gain.value), t); bgm.master.gain.linearRampToValueAtTime(Math.max(0.0001, settings.bgmVol*0.5), t+0.2); }
 }
 function toggleBgm(){
   settings.bgm = !settings.bgm; saveSettings();
@@ -2024,6 +2043,7 @@ function speakRaw(text){
     if(v){ u.voice = v; u.lang = v.lang; } else { u.lang = 'zh-CN'; }
     u.rate = 0.9;
     u.pitch = 1.05;
+    u.volume = (settings.voiceVol != null ? settings.voiceVol : 0.7);
     speechSynthesis.speak(u);
   }catch(e){}
 }
