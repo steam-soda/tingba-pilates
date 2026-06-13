@@ -503,7 +503,7 @@ input[type=range]{accent-color:var(--blue);width:150px}
               <button class="mini-btn" onclick="previewVoice()">试听</button>
             </div>
           </div>
-          <div class="voice-hint">语音来自系统自带音色。想要更自然的声音：iPadOS 可在「设置 → 辅助功能 → 朗读内容 → 声音」下载中文「增强版」女声（如婷婷），下载后回到这里选择。</div>
+          <div class="voice-hint"><span id="voice-count"></span>能选几种取决于 iPad 装了几个中文语音，系统默认就很少。<b>想要更多、更自然的声音（强烈推荐「增强版」婷婷）：</b>打开 iPad「设置 → 辅助功能 → 朗读内容 → 声音 → 中文」，下载带「增强 / Premium」字样的语音，下载完回到这里下拉就能选到。</div>
         </div>
 
         <div class="rule-tag"><span>INSTALL · 安装到 iPad</span><span>PWA</span></div>
@@ -2015,6 +2015,8 @@ function getVoice(){
 function populateVoiceSelect(){
   const sel = $('#voice-select');
   if(!sel) return;
+  const cnt = $('#voice-count');
+  if(cnt) cnt.textContent = zhVoices.length ? `当前找到 ${zhVoices.length} 个中文语音。` : '当前没找到中文语音，将用系统默认。';
   if(!zhVoices.length){
     sel.innerHTML = '<option>系统默认</option>';
     return;
