@@ -1259,6 +1259,7 @@ const REMIND_EVERY = 16;   // 每 16 秒轮换一条实时姿势提醒
 
 /* ================= 导航 ================= */
 function switchView(name){
+  if(name!=='lib') setLibAnimsActive(false);     // 离开动作库就停掉那 35 个动画
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   $('#view-'+name).classList.add('active');
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.view===name));
@@ -1281,6 +1282,35 @@ function renderAnim(ex){
   if(ex.svg2) return `<div class="twoview"><div>${ex.svg}<b>${ex.label1||'正面'}</b></div><div>${ex.svg2}<b>${ex.label2||'侧面'}</b></div></div>`;
   return ex.svg;
 }
+
+/* ===== 动画性能：只播放屏幕内的小人，省电省 CPU ===== */
+const REDUCE_MOTION = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+let libObs = null;
+function pauseSvg(s){ try{ s.pauseAnimations(); }catch(e){} }
+function playSvg(s){ try{ s.unpauseAnimations(); }catch(e){} }
+
+function setupLibAnims(){
+  const svgs = document.querySelectorAll('#libgrid svg.fig');
+  if(REDUCE_MOTION){ svgs.forEach(s=>{ pauseSvg(s); try{ s.setCurrentTime(0.0001); }catch(e){} }); return; }
+  svgs.forEach(pauseSvg);                       // 默认全部暂停，可见的再播放
+  if(libObs) libObs.disconnect();
+  libObs = new IntersectionObserver((ents)=>{
+    ents.forEach(e=> e.isIntersecting ? playSvg(e.target) : pauseSvg(e.target));
+  }, { root: document.querySelector('#view-lib'), rootMargin: '120px 0px' });
+  svgs.forEach(s=>libObs.observe(s));
+}
+
+/* 切走动作库时停掉它的动画；App 切到后台时全部暂停 */
+function setLibAnimsActive(on){
+  if(REDUCE_MOTION) return;
+  if(!on && libObs){ libObs.disconnect(); libObs=null; document.querySelectorAll('#libgrid svg.fig').forEach(pauseSvg); }
+  else if(on) setupLibAnims();
+}
+document.addEventListener('visibilitychange', ()=>{
+  const hidden = document.hidden;
+  document.querySelectorAll('svg.fig').forEach(s=> hidden ? pauseSvg(s) : (REDUCE_MOTION ? pauseSvg(s) : playSvg(s)));
+  if(!hidden && document.querySelector('#view-lib.active')) setupLibAnims();
+});
 
 function renderLibrary(){
   $('#lib-count').textContent = EXERCISES.length + ' 个动作';
@@ -1312,6 +1342,7 @@ function renderLibrary(){
     });
   });
   $('#libgrid').innerHTML = html;
+  setupLibAnims();
 }
 
 function togglePref(id, val){
@@ -1630,6 +1661,7 @@ function enterPhase(idx){
   $('#cue-index').textContent = 'EX·' + pad2(ph.exIdx+1);
   curName = ex.name;
   $('#anim-holder').innerHTML = renderAnim(ex);
+  if(REDUCE_MOTION) $('#anim-holder').querySelectorAll('svg.fig').forEach(pauseSvg);
   $('#breath-chip').textContent = ex.breath;
   $('#ex-reps').textContent = ex.reps;
   $('#ex-breath').textContent = '呼吸 · ' + ex.breath;
