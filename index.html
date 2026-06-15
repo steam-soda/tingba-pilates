@@ -1317,9 +1317,29 @@ document.addEventListener('visibilitychange', ()=>{
   if(!hidden && bgm && bgm.ctx && bgm.ctx.state==='suspended') bgm.ctx.resume();   // 回到前台后恢复音乐
 });
 
-/* iOS 音频解锁：首次触摸/点击时确保 AudioContext 处于运行态（PWA 下尤其需要） */
+/* iOS：用一个隐藏的静音 <audio> 循环把音频会话提升到 playback 类别，
+   这样即使 iPad 处于静音模式，Web Audio 合成的背景音乐也能发声。 */
+let silentEl = null;
+function makeSilentAudio(){
+  if(silentEl) return silentEl;
+  try{
+    const sr=8000, n=sr*0.5, buf=new ArrayBuffer(44+n), dv=new DataView(buf);
+    const wr=(o,s)=>{ for(let i=0;i<s.length;i++) dv.setUint8(o+i, s.charCodeAt(i)); };
+    wr(0,'RIFF'); dv.setUint32(4,36+n,true); wr(8,'WAVE'); wr(12,'fmt ');
+    dv.setUint32(16,16,true); dv.setUint16(20,1,true); dv.setUint16(22,1,true);
+    dv.setUint32(24,sr,true); dv.setUint32(28,sr,true); dv.setUint16(32,1,true); dv.setUint16(34,8,true);
+    wr(36,'data'); dv.setUint32(40,n,true);
+    for(let i=0;i<n;i++) dv.setUint8(44+i,128);            // 8-bit 静音
+    silentEl = new Audio(URL.createObjectURL(new Blob([buf],{type:'audio/wav'})));
+    silentEl.loop = true; silentEl.volume = 0.0; silentEl.setAttribute('playsinline','');
+  }catch(e){}
+  return silentEl;
+}
+
+/* iOS 音频解锁：首次触摸/点击时恢复 AudioContext 并启动静音元素（PWA 下尤其需要） */
 function unlockAudio(){
   try{ if(audioCtx && audioCtx.state==='suspended') audioCtx.resume(); }catch(e){}
+  try{ const s=makeSilentAudio(); if(s && s.paused) s.play().catch(()=>{}); }catch(e){}
 }
 ['touchend','pointerdown','click'].forEach(ev=>document.addEventListener(ev, unlockAudio, {passive:true}));
 
@@ -1931,6 +1951,7 @@ function musicScheduler(){
 function startBgm(){
   if(bgm || !settings.bgm) return;
   try{
+    const s = makeSilentAudio(); if(s && s.paused) s.play().catch(()=>{});   // iOS：提升音频会话，绕过静音模式
     const ctx = ensureAudio();
     const master = ctx.createGain(); master.gain.value = 0; master.connect(ctx.destination);
     const comp = ctx.createDynamicsCompressor(); comp.connect(master);
@@ -1956,6 +1977,7 @@ function bgmScene(section){
   bgm.step = Math.ceil(bgm.step/8)*8;        // 在小节边界换段，过渡干净
 }
 function stopBgm(){
+  try{ if(silentEl && !silentEl.paused) silentEl.pause(); }catch(e){}
   if(!bgm) return;
   const ref = bgm, t = bgm.ctx.currentTime; bgm = null;
   if(ref.timerId) clearInterval(ref.timerId);
