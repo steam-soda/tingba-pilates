@@ -1236,7 +1236,7 @@ EXERCISES.forEach((ex,i)=>{
 
 /* ================= 状态与存储 ================= */
 const $ = s => document.querySelector(s);
-const PREP_FIRST = 5, PREP = 10;
+const PREP_FIRST = 12, PREP = 14;   // 准备阶段加长：语音完整讲一遍姿势，留出摆好动作的时间
 const RING_C = 2 * Math.PI * 43;
 const pad2 = n => String(n).padStart(2,'0');
 const fmtDate = d => d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate());
@@ -1259,7 +1259,7 @@ let phases = [], pIdx = 0, remain = 0, running = false, lastTick = 0, timerId = 
 let sessionSeconds = 0, wakeLock = null, audioCtx = null;
 let calY, calM, selDate = null;
 let remindIdx = 0, remindAccum = 0, curName = '';
-const REMIND_EVERY = 16;   // 每 16 秒轮换一条实时姿势提醒
+const REMIND_EVERY = 12;   // 每 12 秒轮换一条实时姿势提醒（引导更密）
 
 /* ================= 导航 ================= */
 function switchView(name){
@@ -1717,9 +1717,12 @@ function enterPhase(idx){
     badge.textContent = 'PREP · ' + ex.section;
     badge.classList.add('prep');
     ring.classList.add('prep');
-    $('#next-hint').textContent = '调整好姿势，马上开始';
-    $('#remind-live').textContent = '调整呼吸，准备进入下一个动作';
-    speak(`下一个，${ex.name}`);
+    $('#next-hint').textContent = '听语音摆好姿势，马上开始';
+    $('#remind-live').textContent = '跟着语音把姿势摆好';
+    // 准备阶段：完整朗读这个动作怎么做（名称 + 器械 + 全部要点），让你边听边到位
+    const lead = ph.ord === 0 ? '第一个动作，' : '下一个，';
+    const equipNote = ex.equip ? `先准备好${ex.equip}。` : '';
+    speak(`${lead}${ex.name}。${equipNote}${ex.cues.join('。')}。`);
     beep(620, .12);
   }else{
     badge.textContent = ex.section;
@@ -1730,8 +1733,7 @@ function enterPhase(idx){
     $('#next-hint').textContent = nx ? `NEXT · ${nx.name} ${nx.en}` : 'FINAL · 最后一个动作';
     remindIdx = 0; remindAccum = 0;
     showReminder(true);
-    speak('开始');
-    beep(880, .15);
+    beep(880, .15);   // 不再朗读"开始"，让准备阶段的姿势讲解能完整说完
   }
   updateTimerUI();
   updateProgress();
