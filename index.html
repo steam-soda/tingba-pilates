@@ -1313,8 +1313,12 @@ function setLibAnimsActive(on){
 document.addEventListener('visibilitychange', ()=>{
   const hidden = document.hidden;
   document.querySelectorAll('svg.fig').forEach(s=> hidden ? pauseSvg(s) : (REDUCE_MOTION ? pauseSvg(s) : playSvg(s)));
-  if(!hidden && document.querySelector('#view-lib.active')) setupLibAnims();
-  if(!hidden && bgm && bgm.ctx && bgm.ctx.state==='suspended') bgm.ctx.resume();   // 回到前台后恢复音乐
+  if(!hidden){
+    if(document.querySelector('#view-lib.active')) setupLibAnims();
+    if(bgm && bgm.ctx && bgm.ctx.state==='suspended') bgm.ctx.resume();   // 回到前台后恢复音乐
+    // 回到前台：屏幕锁屏会自动释放常亮锁且暂停计时——重新申请常亮，并把熄屏期间当作暂停
+    if(running){ if(!wakeLock) requestWakeLock(); lastTick = performance.now(); }
+  }
 });
 
 /* iOS：用一个隐藏的静音 <audio> 循环把音频会话提升到 playback 类别，
@@ -2084,8 +2088,11 @@ if(window.speechSynthesis){
 
 async function requestWakeLock(){
   try{
-    if('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
-  }catch(e){}
+    if('wakeLock' in navigator){
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', ()=>{ wakeLock = null; });   // 释放后置空，回前台可重新申请
+    }
+  }catch(e){ wakeLock = null; }
 }
 
 /* ================= 初始化 ================= */
